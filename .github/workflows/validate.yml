@@ -57,7 +57,7 @@ jobs:
           Compress-Archive -Path $fixture -DestinationPath $archive
           $env:AGENT_SKILLS_ARCHIVE_URL = $archive
           ./install.ps1
-          $secondRun = ./install.ps1 | Out-String
+          $secondRun = ./install.ps1 6>&1 | Out-String
           $secondRun
           if ($secondRun -notmatch "already up to date") {
             throw "Second install was not idempotent."
