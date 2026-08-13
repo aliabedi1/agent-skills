@@ -1,0 +1,64 @@
+name: Validate skills
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate repository
+        run: ./scripts/validate.sh
+      - name: Test installer twice
+        env:
+          CODEX_HOME: ${{ runner.temp }}/codex
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}/claude
+        run: |
+          mkdir -p "${{ runner.temp }}/fixture/agent-skills-main"
+          cp -a skills "${{ runner.temp }}/fixture/agent-skills-main/skills"
+          tar -czf "${{ runner.temp }}/agent-skills.tar.gz" -C "${{ runner.temp }}/fixture" agent-skills-main
+          export AGENT_SKILLS_ARCHIVE_URL="file://${{ runner.temp }}/agent-skills.tar.gz"
+          ./install.sh
+          ./install.sh | tee /tmp/second-install.log
+          grep -q "already up to date" /tmp/second-install.log
+
+  validate-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path ./install.ps1),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+          }
+      - name: Test installer twice
+        shell: pwsh
+        env:
+          CODEX_HOME: ${{ runner.temp }}\codex
+          CLAUDE_CONFIG_DIR: ${{ runner.temp }}\claude
+        run: |
+          $fixture = Join-Path '${{ runner.temp }}' 'fixture\agent-skills-main'
+          New-Item -ItemType Directory -Path $fixture -Force | Out-Null
+          Copy-Item -LiteralPath ./skills -Destination (Join-Path $fixture 'skills') -Recurse
+          $archive = Join-Path '${{ runner.temp }}' 'agent-skills.zip'
+          Compress-Archive -Path $fixture -DestinationPath $archive
+          $env:AGENT_SKILLS_ARCHIVE_URL = $archive
+          ./install.ps1
+          $secondRun = ./install.ps1 | Out-String
+          $secondRun
+          if ($secondRun -notmatch "already up to date") {
+            throw "Second install was not idempotent."
+          }
