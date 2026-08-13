@@ -11,7 +11,7 @@ jobs:
   validate-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate repository
         run: ./scripts/validate.sh
       - name: Test installer twice
@@ -30,7 +30,7 @@ jobs:
   validate-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate PowerShell syntax
         shell: pwsh
         run: |
