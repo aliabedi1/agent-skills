@@ -4,6 +4,12 @@ Portable, versioned skills for Codex and Claude Code. This repository is the sou
 
 The installer works on Linux, macOS, and Windows, installs every skill into both agents, and can be rerun at any time to update to the latest version on `main`.
 
+## Included collections
+
+The repository vendors all 35 skills from [Matt Pocock's `mattpocock/skills`](https://github.com/mattpocock/skills) at commit [`8b78b531`](https://github.com/mattpocock/skills/commit/8b78b531ab965735c5dc74f6f7a219e1e37326df), including the engineering, productivity, misc, and in-progress collections. The upstream bucket layout is flattened into one directory per skill under [`skills/`](skills/) so the installers below always discover and install the complete collection.
+
+Each vendored skill includes Matt Pocock's MIT license as `LICENSE.txt`.
+
 ## Install or update
 
 Linux/macOS:
