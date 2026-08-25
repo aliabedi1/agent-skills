@@ -1,81 +1,38 @@
 # Agent Skills
 
-Portable, versioned skills for Codex and Claude Code. This repository is the source of truth for the skills in [`skills/`](skills/).
+Portable, versioned skills for Codex, Claude Code, and Cursor-oriented workflows. The repository keeps every skill available, but the installers let each machine activate only the collections needed for the current kind of work.
 
-The installer works on Linux, macOS, and Windows, installs every skill into both agents, and can be rerun at any time to update to the latest version on `main`.
+## Why selective installation matters
 
-## Included collections
+An installed skill is copied into an agent's scanned skills directory and may consume startup context. An available skill remains in this repository but consumes no agent context until installed. Installing the whole catalog can make Codex report:
 
-The repository vendors all 35 skills from [Matt Pocock's `mattpocock/skills`](https://github.com/mattpocock/skills) at commit [`8b78b531`](https://github.com/mattpocock/skills/commit/8b78b531ab965735c5dc74f6f7a219e1e37326df), including the engineering, productivity, misc, and in-progress collections. The upstream bucket layout is flattened into one directory per skill under [`skills/`](skills/) so the installers below always discover and install the complete collection.
+> Skill descriptions were shortened to fit the skills context budget
 
-Each vendored skill includes Matt Pocock's MIT license as `LICENSE.txt`.
+That warning does not delete skills, but it means Codex had to truncate the descriptions used to decide when skills apply. Focused collections and profiles keep that routing context useful. Plugins can also expose a skill that already exists in `~/.codex/skills`, `~/.claude/skills`, or `~/.cursor/skills`; the installers detect filesystem duplicates and keep the existing source as the owner.
+
+## Collections
+
+```text
+collections/
+├── matt/       # 35 skills from mattpocock/skills
+├── cursor/     # frontend and Cursor-oriented skills
+├── custom/     # focused repository utilities
+├── caveman/    # caveman communication tools
+├── documents/  # DOCX and PDF skills
+└── lark/       # Lark/Feishu skills and workflows
+```
+
+The Matt collection vendors all 35 skills from [Matt Pocock's `mattpocock/skills`](https://github.com/mattpocock/skills) at commit [`8b78b531`](https://github.com/mattpocock/skills/commit/8b78b531ab965735c5dc74f6f7a219e1e37326df). Their contents and MIT license files are preserved.
+
+Collection names and individual skill names are both valid selectors. For example, `matt,caveman` installs two collections, while `matt,caveman-review` installs Matt plus one skill.
 
 ## Install or update
 
-Linux/macOS:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.sh | bash
-```
-
-Windows PowerShell:
-
-```powershell
-irm https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.ps1 | iex
-```
-
-Run the same command again whenever you want the latest versions. Restart Codex and Claude Code afterward so they reload the skills.
-
-By default, skills are installed to:
-
-| Agent | Linux/macOS | Windows |
-| --- | --- | --- |
-| Codex | `~/.codex/skills` | `$HOME\.codex\skills` |
-| Claude Code | `~/.claude/skills` | `$HOME\.claude\skills` |
-
-The scripts respect `CODEX_HOME` and `CLAUDE_CONFIG_DIR` when those variables are set.
-
-### Install for only one agent
-
-Linux/macOS, Codex only:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.sh | AGENT_SKILLS_TARGETS=codex bash
-```
-
-Windows PowerShell, Claude only:
-
-```powershell
-$env:AGENT_SKILLS_TARGETS = "claude"; irm https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.ps1 | iex
-```
-
-Use `both`, `codex`, or `claude`. Unset the variable afterward if you set it persistently.
-
-## What updates do
-
-The installer owns only the skills recorded in `.agent-skills-managed` inside each agent's skills directory.
-
-- New and changed repository skills are copied into place.
-- Skills previously installed by this repository but later removed from it are removed locally.
-- Unrelated skills are left alone.
-- Any replaced or removed directory is copied first to `~/.agent-skills-backups/<timestamp>/`.
-- Built-in Codex skills under `.system` are not included or modified.
-
-## Add or update a skill
-
-You can edit a skill directly under `skills/<skill-name>/`, or sync the current skills from one machine into a clone of this repository.
-
-Linux/macOS:
+Clone the repository when using profiles or management commands:
 
 ```bash
 git clone https://github.com/aliabedi1/agent-skills.git
 cd agent-skills
-./scripts/sync-from-local.sh claude
-./scripts/validate.sh
-git diff
-git add skills
-git commit -m "Update skills"
-git push
 ```
 
 Windows PowerShell:
@@ -83,35 +40,224 @@ Windows PowerShell:
 ```powershell
 git clone https://github.com/aliabedi1/agent-skills.git
 Set-Location agent-skills
-.\scripts\sync-from-local.ps1 -Source claude
-bash .\scripts\validate.sh
-git diff
-git add skills
-git commit -m "Update skills"
-git push
 ```
 
-Change `claude` to `codex` when that agent has the authoritative copy. The sync scripts intentionally replace the repository's `skills/` contents with the selected local skill set, so inspect `git diff` before committing.
+### Daily usage
 
-After pushing, run the install/update command on each PC. The scripts always download the newest commit on `main`; no local clone is needed just to install or update.
+Linux/macOS:
 
-## Add a skill manually
+```bash
+AGENT_SKILLS_COLLECTIONS=matt,caveman ./install.sh
+```
 
-Every direct child of `skills/` must be a self-contained directory with a non-empty `SKILL.md`:
+Windows:
+
+```powershell
+$env:AGENT_SKILLS_COLLECTIONS = "matt,caveman"
+.\install.ps1
+```
+
+### Frontend work
+
+```bash
+AGENT_SKILLS_COLLECTIONS=matt,cursor ./install.sh
+```
+
+```powershell
+$env:AGENT_SKILLS_COLLECTIONS = "matt,cursor"
+.\install.ps1
+```
+
+### Matt skills only
+
+```bash
+./install.sh --profile matt
+```
+
+```powershell
+.\install.ps1 -Profile matt
+```
+
+### Cursor collection only
+
+```bash
+./install.sh --profile cursor
+```
+
+```powershell
+.\install.ps1 -Profile cursor
+```
+
+### Everything temporarily
+
+```bash
+AGENT_SKILLS_COLLECTIONS=all ./install.sh
+# work with the full catalog, then:
+./install.sh clean
+```
+
+```powershell
+$env:AGENT_SKILLS_COLLECTIONS = "all"
+.\install.ps1
+# work with the full catalog, then:
+.\install.ps1 clean
+```
+
+The existing no-argument command remains compatible and installs `all`, while printing a recommendation to choose a smaller profile. The remote one-line installers also continue to work:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.sh | bash
+```
+
+```powershell
+irm https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.ps1 | iex
+```
+
+## Profiles
+
+Profiles are maintained in [`profiles.conf`](profiles.conf) and map to collections without requiring a JSON or YAML parser.
+
+| Profile | Collections | Intended use |
+| --- | --- | --- |
+| `minimal` | `custom` | Small everyday utility set |
+| `backend` | `matt,custom` | Backend engineering and repository workflows |
+| `frontend` | `cursor,custom` | Frontend implementation and review |
+| `matt` | `matt` | Matt Pocock's complete collection |
+| `cursor` | `cursor` | Cursor/frontend collection |
+| `all` | every collection | Temporary access to the entire catalog |
+
+```bash
+./install.sh --profile frontend
+```
+
+```powershell
+.\install.ps1 -Profile frontend
+```
+
+Do not combine a profile with `AGENT_SKILLS_COLLECTIONS`; the installer rejects the ambiguous selection.
+
+## Installation targets and duplicate ownership
+
+By default the installer considers Codex and Claude Code targets. Use `AGENT_SKILLS_TARGETS=codex` or `AGENT_SKILLS_TARGETS=claude` to choose one. It respects `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `CURSOR_CONFIG_DIR`.
+
+Before copying a skill, the installer checks:
+
+- `~/.codex/skills`
+- `~/.claude/skills`
+- `~/.cursor/skills`
+
+If an unmanaged copy already exists, it is not overwritten or deleted. The installer prints the repository source, every discovered installation, and the path that remains the owner. Use a single explicit target when you want predictable ownership for a fresh setup:
+
+```bash
+AGENT_SKILLS_TARGETS=codex ./install.sh --profile minimal
+```
+
+On Windows:
+
+```powershell
+$env:AGENT_SKILLS_TARGETS = "codex"
+.\install.ps1 -Profile minimal
+```
+
+Plugin-provided skills may not have a directory in these roots, so `doctor` reminds you to review enabled plugins separately.
+
+## Doctor
+
+Run this before installing a large profile or when Codex shows duplicate/context warnings:
+
+```bash
+./install.sh doctor
+```
+
+```powershell
+.\install.ps1 doctor
+```
+
+Example output (paths and counts depend on the machine):
 
 ```text
-skills/
-└── my-skill/
-    ├── SKILL.md
-    ├── scripts/
-    ├── references/
-    └── assets/
+Agent Skills doctor
+
+Installed skills: 12 discovered (8 managed by this repository)
+Active collections: caveman,custom
+
+Skill sources:
+- caveman: /home/me/.codex/skills/caveman
+- graphify: /home/me/.cursor/skills/graphify
+
+Duplicate skills:
+- graphify
+  - /home/me/.codex/skills/graphify
+  - /home/me/.cursor/skills/graphify
+
+Context size warning risk: low (12 installed skill directories)
+Cleanup recommendations:
+- Use a focused profile or AGENT_SKILLS_COLLECTIONS for daily work.
+- Keep one owner for each duplicate and uninstall managed copies you do not need.
+- Run ./install.sh clean to remove only repository-managed skills.
 ```
 
-Run `./scripts/validate.sh` before pushing. GitHub Actions runs the same validation on every push and pull request.
+The context risk is a simple inventory heuristic: fewer than 25 skill directories is low, 25–49 is medium, and 50 or more is high. Codex's actual budget can vary.
+
+## Managed cleanup and uninstall
+
+Each target has two management files:
+
+- `.installed-skills.json` records skill name, source collection, repository source, install location, and UTC timestamp.
+- `.agent-skills-managed` is the dependency-free installer index used by both shell implementations.
+
+`clean` removes only entries owned by this repository. Manually created and externally installed directories are never included and are never deleted:
+
+```bash
+./install.sh clean
+```
+
+```powershell
+.\install.ps1 clean
+```
+
+Remove one managed skill or collection:
+
+```bash
+./install.sh uninstall caveman-review
+./install.sh uninstall --collection cursor
+```
+
+```powershell
+.\install.ps1 uninstall caveman-review
+.\install.ps1 uninstall -Collection cursor
+```
+
+The installer backs up a managed directory before replacing it during an update under `~/.agent-skills-backups/<timestamp>/`. Cleanup and uninstall do not touch unmanaged skills.
+
+For installations made by an older version of this repository, rerun the new installer once to migrate `.agent-skills-managed` into the richer manifest format, inspect with `doctor`, and then use `clean` if desired.
+
+## Maintaining the catalog
+
+Every skill remains a self-contained directory with a non-empty `SKILL.md`:
+
+```text
+collections/<collection>/<skill-name>/
+├── SKILL.md
+├── scripts/
+├── references/
+└── assets/
+```
+
+To sync one agent's locally installed skills into the `custom` collection:
+
+```bash
+./scripts/sync-from-local.sh claude custom
+./scripts/validate.sh
+```
+
+```powershell
+.\scripts\sync-from-local.ps1 -Source claude -Collection custom
+bash .\scripts\validate.sh
+```
+
+Choose another collection name explicitly when importing a distinct source. Sync replaces only that collection, leaving all other collections intact. Validation checks shell syntax, skill metadata, duplicate names across collections, symlinks, and profile references.
 
 ## Safety and ownership
 
-Do not commit API keys, tokens, credentials, private memories, or machine-specific configuration. This is a public repository. The included skills retain their original authorship and license terms; check each skill directory before redistributing or modifying third-party material.
-
-Rules, workflows, and memories can be added later as separate top-level directories. The current installers deliberately manage only `skills/`.
+Do not commit API keys, tokens, credentials, private memories, or machine-specific configuration. This is a public repository. Included skills retain their original authorship and license terms; check each skill directory before redistributing third-party material.

@@ -1,13 +1,16 @@
 param(
     [ValidateSet("claude", "codex")]
-    [string]$Source = "claude"
+    [string]$Source = "claude",
+
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]*$')]
+    [string]$Collection = "custom"
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$Destination = Join-Path $RepoRoot "skills"
+$Destination = Join-Path (Join-Path $RepoRoot "collections") $Collection
 if ($Source -eq "codex") {
     $AgentHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
 }
@@ -26,9 +29,15 @@ if (-not $Skills) {
     throw "No valid skills with SKILL.md were found in $SourceDirectory"
 }
 
-Get-ChildItem -LiteralPath $Destination -Directory | Remove-Item -Recurse -Force
+New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+$ResolvedCollections = [IO.Path]::GetFullPath((Join-Path $RepoRoot "collections")).TrimEnd('\', '/')
+$ResolvedDestination = [IO.Path]::GetFullPath($Destination).TrimEnd('\', '/')
+if (-not $ResolvedDestination.StartsWith($ResolvedCollections + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to replace a directory outside the collections root: $ResolvedDestination"
+}
+Get-ChildItem -LiteralPath $ResolvedDestination -Directory | Remove-Item -Recurse -Force
 foreach ($Skill in $Skills) {
-    Copy-Item -LiteralPath $Skill.FullName -Destination (Join-Path $Destination $Skill.Name) -Recurse -Force
+    Copy-Item -LiteralPath $Skill.FullName -Destination (Join-Path $ResolvedDestination $Skill.Name) -Recurse -Force
 }
 
-Write-Host "Synced $SourceDirectory into $Destination. Review git diff, then commit and push."
+Write-Host "Synced $SourceDirectory into collection $Collection. Other collections were not changed. Review git diff, then commit and push."

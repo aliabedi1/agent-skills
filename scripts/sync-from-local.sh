@@ -2,13 +2,19 @@
 set -euo pipefail
 
 SOURCE_AGENT="${1:-claude}"
+COLLECTION="${2:-custom}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if ! [[ "$COLLECTION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  printf 'Invalid collection name: %s\n' "$COLLECTION" >&2
+  exit 2
+fi
 
 case "$SOURCE_AGENT" in
   claude) SOURCE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills" ;;
   codex) SOURCE_DIR="${CODEX_HOME:-$HOME/.codex}/skills" ;;
   *)
-    printf 'Usage: %s [claude|codex]\n' "$0" >&2
+    printf 'Usage: %s [claude|codex] [collection]\n' "$0" >&2
     exit 2
     ;;
 esac
@@ -33,6 +39,8 @@ if [[ -z "$(find "$STAGING_DIR" -mindepth 1 -maxdepth 1 -type d -print -quit)" ]
   exit 1
 fi
 
-find "$REPO_ROOT/skills" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
-cp -a "$STAGING_DIR/." "$REPO_ROOT/skills/"
-printf 'Synced %s into %s. Review git diff, then commit and push.\n' "$SOURCE_DIR" "$REPO_ROOT/skills"
+DESTINATION="$REPO_ROOT/collections/$COLLECTION"
+mkdir -p "$DESTINATION"
+find "$DESTINATION" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} +
+cp -a "$STAGING_DIR/." "$DESTINATION/"
+printf 'Synced %s into collection %s. Other collections were not changed. Review git diff, then commit and push.\n' "$SOURCE_DIR" "$COLLECTION"
