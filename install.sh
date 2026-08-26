@@ -6,22 +6,16 @@ REF="${AGENT_SKILLS_REF:-main}"
 TARGETS="${AGENT_SKILLS_TARGETS:-both}"
 ARCHIVE_URL="${AGENT_SKILLS_ARCHIVE_URL:-https://codeload.github.com/${REPOSITORY}/tar.gz/refs/heads/${REF}}"
 COMMAND="install"
-PROFILE=""
-UNINSTALL_SKILL=""
-UNINSTALL_COLLECTION=""
 
 usage() {
   cat <<'EOF'
 Usage:
-  ./install.sh [--profile minimal|backend|frontend|matt|cursor|all]
+  ./install.sh
   ./install.sh doctor
-  ./install.sh clean
-  ./install.sh uninstall <skill-name>
-  ./install.sh uninstall --collection <collection-name>
 
-Set AGENT_SKILLS_COLLECTIONS to a comma-separated list of collections or skill
-names. With no profile or selection, all collections are installed for backward
-compatibility.
+Run without arguments to install every skill. Caveman and Unslop are then
+configured as always-on Codex skills; every other skill remains available when
+its description matches the task.
 EOF
 }
 
@@ -39,41 +33,17 @@ case "$TARGETS" in
   *) die "AGENT_SKILLS_TARGETS must be both, codex, or claude (received: $TARGETS)" ;;
 esac
 
-if [[ $# -gt 0 ]]; then
+if [[ $# -gt 1 ]]; then
+  usage >&2
+  exit 2
+fi
+if [[ $# -eq 1 ]]; then
   case "$1" in
-    doctor|clean)
-      COMMAND="$1"
-      shift
-      ;;
-    uninstall)
-      COMMAND="uninstall"
-      shift
-      if [[ "${1:-}" == "--collection" ]]; then
-        [[ $# -eq 2 ]] || die "Usage: $0 uninstall --collection <collection-name>"
-        UNINSTALL_COLLECTION="$2"
-      else
-        [[ $# -eq 1 ]] || die "Usage: $0 uninstall <skill-name>"
-        UNINSTALL_SKILL="${1:-}"
-      fi
-      shift "$#"
-      ;;
+    doctor) COMMAND="doctor" ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "Only supported command is: $0 doctor" ;;
   esac
 fi
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --profile)
-      [[ $# -ge 2 ]] || die "--profile requires a profile name"
-      PROFILE="$2"
-      shift 2
-      ;;
-    --help|-h)
-      usage
-      exit 0
-      ;;
-    *) die "Unknown argument: $1" ;;
-  esac
-done
 
 CODEX_SKILLS_DIR="${CODEX_HOME:-$HOME/.codex}/skills"
 CLAUDE_SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills"
@@ -177,17 +147,6 @@ upsert_managed() {
   write_json_manifest "$root"
 }
 
-remove_managed_entry() {
-  local root="$1" skill="$2" file temp
-  file="$(managed_file "$root")"
-  [[ -f "$file" ]] || return 0
-  ensure_managed_format "$root"
-  temp="${file}.tmp.$$"
-  awk -F '\t' -v name="$skill" '$1 != name' "$file" > "$temp"
-  mv "$temp" "$file"
-  write_json_manifest "$root"
-}
-
 warn_duplicate() {
   local skill="$1" source="$2"
   shift 2
@@ -207,66 +166,34 @@ existing_sources() {
   done < <(all_roots)
 }
 
-remove_managed_skill() {
-  local agent="$1" root="$2" skill="$3" destination
-  if ! is_managed "$root" "$skill"; then
-    return 0
-  fi
-  destination="$root/$skill"
-  if [[ -e "$destination" || -L "$destination" ]]; then
-    rm -rf -- "$destination"
-    printf '[%s] removed managed skill %s\n' "$agent" "$skill"
-  fi
-  remove_managed_entry "$root" "$skill"
-}
+configure_codex_always_on() {
+  local codex_root="$1" instructions temp
+  local marker_start="# >>> agent-skills always-on >>>"
+  local marker_end="# <<< agent-skills always-on <<<"
 
-run_clean() {
-  local agent root file copy skill _collection _location _timestamp _source
-  while IFS=$'\t' read -r agent root; do
-    file="$(managed_file "$root")"
-    [[ -f "$file" ]] || continue
-    ensure_managed_format "$root"
-    copy="${file}.clean.$$"
-    cp "$file" "$copy"
-    while IFS=$'\t' read -r skill _collection _location _timestamp _source; do
-      [[ -z "$skill" ]] && continue
-      if ! valid_name "$skill"; then
-        printf 'Ignoring invalid managed entry: %s\n' "$skill" >&2
-        continue
-      fi
-      remove_managed_skill "$agent" "$root" "$skill"
-    done < "$copy"
-    rm -f -- "$copy"
-  done < <(target_roots)
-  printf 'Clean complete. Only skills listed in this repository\x27s managed manifests were removed.\n'
-}
-
-run_uninstall() {
-  local agent root file copy skill collection _location _timestamp _source
-  if [[ -n "$UNINSTALL_SKILL" ]]; then
-    valid_name "$UNINSTALL_SKILL" || die "Invalid skill name: $UNINSTALL_SKILL"
+  instructions="$codex_root/AGENTS.md"
+  mkdir -p "$codex_root"
+  temp="${instructions}.tmp.$$"
+  if [[ -f "$instructions" ]]; then
+    awk -v start="$marker_start" -v end="$marker_end" '
+      $0 == start { skip=1; next }
+      $0 == end { skip=0; next }
+      !skip { print }
+    ' "$instructions" > "$temp"
   else
-    valid_name "$UNINSTALL_COLLECTION" || die "Invalid collection name: $UNINSTALL_COLLECTION"
+    : > "$temp"
   fi
-  while IFS=$'\t' read -r agent root; do
-    file="$(managed_file "$root")"
-    [[ -f "$file" ]] || continue
-    ensure_managed_format "$root"
-    copy="${file}.uninstall.$$"
-    cp "$file" "$copy"
-    while IFS=$'\t' read -r skill collection _location _timestamp _source; do
-      [[ -z "$skill" ]] && continue
-      if ! valid_name "$skill"; then
-        printf 'Ignoring invalid managed entry: %s\n' "$skill" >&2
-        continue
-      fi
-      if [[ -n "$UNINSTALL_SKILL" && "$skill" == "$UNINSTALL_SKILL" ]] || \
-         [[ -n "$UNINSTALL_COLLECTION" && "$collection" == "$UNINSTALL_COLLECTION" ]]; then
-        remove_managed_skill "$agent" "$root" "$skill"
-      fi
-    done < "$copy"
-    rm -f -- "$copy"
-  done < <(target_roots)
+  cat >> "$temp" <<EOF
+
+$marker_start
+## Always-on skills
+
+At the start of every task, invoke and follow \`\$caveman\` and \`\$unslop\`.
+Keep higher-priority instructions and explicit user requests authoritative.
+$marker_end
+EOF
+  mv "$temp" "$instructions"
+  printf '[codex] configured always-on caveman and unslop\n'
 }
 
 run_doctor() {
@@ -316,24 +243,17 @@ run_doctor() {
   fi
   if [[ "$total_count" -ge 50 ]]; then risk="high"; elif [[ "$total_count" -ge 25 ]]; then risk="medium"; else risk="low"; fi
   printf '\nContext size warning risk: %s (%s installed skill directories)\n' "$risk" "$total_count"
-  printf 'Cleanup recommendations:\n'
-  printf -- '- Use a focused profile or AGENT_SKILLS_COLLECTIONS for daily work.\n'
+  printf 'Recommendations:\n'
   if [[ -s "$duplicates" ]]; then
-    printf -- '- Keep one owner for each duplicate and uninstall the managed copies you do not need.\n'
+    printf -- '- Keep one owner for each duplicate before reinstalling.\n'
   fi
-  printf -- '- Run %s clean to remove only repository-managed skills.\n' "$0"
+  printf -- '- Run %s to install or update every skill.\n' "$0"
   printf -- '- Plugin-provided skills cannot be inspected from filesystem roots; review enabled plugins separately.\n'
   rm -f "$inventory" "$duplicates"
 }
 
 if [[ "$COMMAND" == "doctor" ]]; then
   run_doctor
-  exit 0
-elif [[ "$COMMAND" == "clean" ]]; then
-  run_clean
-  exit 0
-elif [[ "$COMMAND" == "uninstall" ]]; then
-  run_uninstall
   exit 0
 fi
 
@@ -354,51 +274,15 @@ tar -xzf "$TEMP_DIR/repository.tar.gz" -C "$TEMP_DIR"
 
 COLLECTIONS_ROOT="$(find "$TEMP_DIR" -mindepth 2 -maxdepth 2 -type d -name collections -print -quit)"
 [[ -n "$COLLECTIONS_ROOT" ]] || die "The downloaded repository does not contain a top-level collections directory."
-REPO_ROOT="$(dirname "$COLLECTIONS_ROOT")"
-PROFILES_FILE="$REPO_ROOT/profiles.conf"
-
-selectors="${AGENT_SKILLS_COLLECTIONS:-}"
-if [[ -n "$PROFILE" ]]; then
-  [[ -z "$selectors" ]] || die "Use either --profile or AGENT_SKILLS_COLLECTIONS, not both."
-  [[ -f "$PROFILES_FILE" ]] || die "Profile configuration not found."
-  selectors="$(awk -F '=' -v name="$PROFILE" '$1 == name { print $2; found=1 } END { exit !found }' "$PROFILES_FILE")" || die "Unknown profile: $PROFILE"
-  printf 'Using profile %s (%s).\n' "$PROFILE" "$selectors"
-elif [[ -z "$selectors" ]]; then
-  selectors="all"
-  printf 'No profile selected; installing all collections for backward compatibility.\n'
-  printf 'For a smaller startup context, use --profile minimal or AGENT_SKILLS_COLLECTIONS.\n'
-fi
+printf 'Installing every available skill.\n'
 
 SELECTED="$TEMP_DIR/selected.tsv"
 : > "$SELECTED"
-IFS=',' read -r -a requested <<< "$selectors"
-for selector in "${requested[@]}"; do
-  selector="${selector#"${selector%%[![:space:]]*}"}"
-  selector="${selector%"${selector##*[![:space:]]}"}"
-  [[ -n "$selector" ]] || continue
-  if [[ "$selector" == "all" ]]; then
-    while IFS= read -r -d '' skill_file; do
-      skill_dir="$(dirname "$skill_file")"
-      collection="$(basename "$(dirname "$skill_dir")")"
-      printf '%s\t%s\t%s\n' "$(basename "$skill_dir")" "$collection" "$skill_dir" >> "$SELECTED"
-    done < <(find "$COLLECTIONS_ROOT" -mindepth 3 -maxdepth 3 -type f -name SKILL.md -print0)
-  elif [[ -d "$COLLECTIONS_ROOT/$selector" ]]; then
-    while IFS= read -r -d '' skill_file; do
-      skill_dir="$(dirname "$skill_file")"
-      printf '%s\t%s\t%s\n' "$(basename "$skill_dir")" "$selector" "$skill_dir" >> "$SELECTED"
-    done < <(find "$COLLECTIONS_ROOT/$selector" -mindepth 2 -maxdepth 2 -type f -name SKILL.md -print0)
-  else
-    matches=0
-    while IFS= read -r -d '' skill_file; do
-      skill_dir="$(dirname "$skill_file")"
-      collection="$(basename "$(dirname "$skill_dir")")"
-      printf '%s\t%s\t%s\n' "$selector" "$collection" "$skill_dir" >> "$SELECTED"
-      matches=$((matches + 1))
-    done < <(find "$COLLECTIONS_ROOT" -mindepth 3 -maxdepth 3 -type f -path "*/$selector/SKILL.md" -print0)
-    [[ "$matches" -gt 0 ]] || die "Unknown collection or skill: $selector"
-    [[ "$matches" -eq 1 ]] || die "Skill name is duplicated across repository collections: $selector"
-  fi
-done
+while IFS= read -r -d '' skill_file; do
+  skill_dir="$(dirname "$skill_file")"
+  collection="$(basename "$(dirname "$skill_dir")")"
+  printf '%s\t%s\t%s\n' "$(basename "$skill_dir")" "$collection" "$skill_dir" >> "$SELECTED"
+done < <(find "$COLLECTIONS_ROOT" -mindepth 3 -maxdepth 3 -type f -name SKILL.md -print0)
 sort -t $'\t' -k1,1 -u "$SELECTED" -o "$SELECTED"
 [[ -s "$SELECTED" ]] || die "The selection did not contain any skills."
 
@@ -439,6 +323,10 @@ while IFS=$'\t' read -r agent root; do
     CHANGED=1
   done < "$SELECTED"
 done < <(target_roots)
+
+if [[ "$TARGETS" == "both" || "$TARGETS" == "codex" ]]; then
+  configure_codex_always_on "${CODEX_HOME:-$HOME/.codex}"
+fi
 
 if [[ "$CHANGED" -eq 0 ]]; then
   printf 'Selected managed skills are already up to date, or an existing owner was kept.\n'

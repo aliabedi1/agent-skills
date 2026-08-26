@@ -1,240 +1,86 @@
 # Agent Skills
 
-Portable, versioned skills for Codex, Claude Code, and Cursor-oriented workflows. The repository keeps every skill available, but the installers let each machine activate only the collections needed for the current kind of work.
+One installer. One health check. Every skill stays installed and available.
 
-## Why selective installation matters
+The installer also makes **Caveman** and **Unslop** always-on for Codex. They are invoked at the start of each Codex task; every other skill is available when its description matches the work.
 
-An installed skill is copied into an agent's scanned skills directory and may consume startup context. An available skill remains in this repository but consumes no agent context until installed. Installing the whole catalog can make Codex report:
+## Commands
 
-> Skill descriptions were shortened to fit the skills context budget
-
-That warning does not delete skills, but it means Codex had to truncate the descriptions used to decide when skills apply. Focused collections and profiles keep that routing context useful. Plugins can also expose a skill that already exists in `~/.codex/skills`, `~/.claude/skills`, or `~/.cursor/skills`; the installers detect filesystem duplicates and keep the existing source as the owner.
-
-## Collections
-
-```text
-collections/
-├── matt/       # 35 skills from mattpocock/skills
-├── cursor/     # frontend and Cursor-oriented skills
-├── custom/     # focused repository utilities
-├── caveman/    # caveman communication tools
-├── documents/  # DOCX and PDF skills
-└── lark/       # Lark/Feishu skills and workflows
-```
-
-The Matt collection vendors all 35 skills from [Matt Pocock's `mattpocock/skills`](https://github.com/mattpocock/skills) at commit [`8b78b531`](https://github.com/mattpocock/skills/commit/8b78b531ab965735c5dc74f6f7a219e1e37326df). Their contents and MIT license files are preserved.
-
-Collection names and individual skill names are both valid selectors. For example, `matt,caveman` installs two collections, while `matt,caveman-review` installs Matt plus one skill.
-
-## Install or update
-
-Clone the repository when using profiles or management commands:
+Clone this repository once:
 
 ```bash
 git clone https://github.com/aliabedi1/agent-skills.git
 cd agent-skills
 ```
 
-Windows PowerShell:
-
 ```powershell
 git clone https://github.com/aliabedi1/agent-skills.git
 Set-Location agent-skills
 ```
 
-### Daily usage
+Then there are only two commands.
 
-Linux/macOS:
-
-```bash
-AGENT_SKILLS_COLLECTIONS=matt,caveman ./install.sh
-```
-
-Windows:
-
-```powershell
-$env:AGENT_SKILLS_COLLECTIONS = "matt,caveman"
-.\install.ps1
-```
-
-### Frontend work
-
-```bash
-AGENT_SKILLS_COLLECTIONS=matt,cursor ./install.sh
-```
-
-```powershell
-$env:AGENT_SKILLS_COLLECTIONS = "matt,cursor"
-.\install.ps1
-```
-
-### Matt skills only
-
-```bash
-./install.sh --profile matt
-```
-
-```powershell
-.\install.ps1 -Profile matt
-```
-
-### Cursor collection only
-
-```bash
-./install.sh --profile cursor
-```
-
-```powershell
-.\install.ps1 -Profile cursor
-```
-
-### Everything temporarily
-
-```bash
-AGENT_SKILLS_COLLECTIONS=all ./install.sh
-# work with the full catalog, then:
-./install.sh clean
-```
-
-```powershell
-$env:AGENT_SKILLS_COLLECTIONS = "all"
-.\install.ps1
-# work with the full catalog, then:
-.\install.ps1 clean
-```
-
-The existing no-argument command remains compatible and installs `all`, while printing a recommendation to choose a smaller profile. The remote one-line installers also continue to work:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.sh | bash
-```
-
-```powershell
-irm https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.ps1 | iex
-```
-
-## Profiles
-
-Profiles are maintained in [`profiles.conf`](profiles.conf) and map to collections without requiring a JSON or YAML parser.
-
-| Profile | Collections | Intended use |
+| What you want | Linux / macOS | Windows PowerShell |
 | --- | --- | --- |
-| `minimal` | `custom` | Small everyday utility set |
-| `backend` | `matt,custom` | Backend engineering and repository workflows |
-| `frontend` | `cursor,custom` | Frontend implementation and review |
-| `matt` | `matt` | Matt Pocock's complete collection |
-| `cursor` | `cursor` | Cursor/frontend collection |
-| `all` | every collection | Temporary access to the entire catalog |
+| Install or update every skill | `./install.sh` | `.\install.ps1` |
+| Check your installation | `./install.sh doctor` | `.\install.ps1 doctor` |
 
-```bash
-./install.sh --profile frontend
+The installer is safe to rerun. It updates only skills it previously installed, makes a backup before replacing one, and never overwrites a manually installed skill.
+
+## What gets installed
+
+```text
+collections/
+├── matt/       # Matt Pocock's TypeScript and engineering skills
+├── cursor/     # Cursor and frontend skills, including Impeccable
+├── custom/     # Custom skills, including Unslop
+├── caveman/    # Caveman communication skills
+├── documents/  # Document and PDF skills
+└── lark/       # Lark / Feishu skills and workflows
 ```
 
-```powershell
-.\install.ps1 -Profile frontend
+All collections are installed to Codex and Claude Code by default. The installer checks `~/.codex/skills`, `~/.claude/skills`, and `~/.cursor/skills` first. If a skill already exists, it keeps that existing owner and shows a duplicate warning instead of creating another copy.
+
+Impeccable is included from [pbakaus/impeccable](https://github.com/pbakaus/impeccable) under its Apache-2.0 license. Unslop is included from [nattergabriel/unslop](https://github.com/nattergabriel/unslop) under its MIT license.
+
+## Caveman and Unslop are always on
+
+When you run the installer, it adds a short managed block to `~/.codex/AGENTS.md`:
+
+```md
+At the start of every task, invoke and follow `$caveman` and `$unslop`.
 ```
 
-Do not combine a profile with `AGENT_SKILLS_COLLECTIONS`; the installer rejects the ambiguous selection.
-
-## Installation targets and duplicate ownership
-
-By default the installer considers Codex and Claude Code targets. Use `AGENT_SKILLS_TARGETS=codex` or `AGENT_SKILLS_TARGETS=claude` to choose one. It respects `CODEX_HOME`, `CLAUDE_CONFIG_DIR`, and `CURSOR_CONFIG_DIR`.
-
-Before copying a skill, the installer checks:
-
-- `~/.codex/skills`
-- `~/.claude/skills`
-- `~/.cursor/skills`
-
-If an unmanaged copy already exists, it is not overwritten or deleted. The installer prints the repository source, every discovered installation, and the path that remains the owner. Use a single explicit target when you want predictable ownership for a fresh setup:
-
-```bash
-AGENT_SKILLS_TARGETS=codex ./install.sh --profile minimal
-```
-
-On Windows:
-
-```powershell
-$env:AGENT_SKILLS_TARGETS = "codex"
-.\install.ps1 -Profile minimal
-```
-
-Plugin-provided skills may not have a directory in these roots, so `doctor` reminds you to review enabled plugins separately.
+This means you do not need to remember a profile, environment variable, or extra command. Existing instructions in that file are kept; only this repository's marked block is refreshed.
 
 ## Doctor
 
-Run this before installing a large profile or when Codex shows duplicate/context warnings:
-
-```bash
-./install.sh doctor
-```
-
-```powershell
-.\install.ps1 doctor
-```
-
-Example output (paths and counts depend on the machine):
+Use doctor whenever Codex warns that skill descriptions were shortened, or when you think two agents/plugins installed the same skill:
 
 ```text
 Agent Skills doctor
 
-Installed skills: 12 discovered (8 managed by this repository)
-Active collections: caveman,custom
-
-Skill sources:
-- caveman: /home/me/.codex/skills/caveman
-- graphify: /home/me/.cursor/skills/graphify
+Installed skills: 86 discovered (82 managed by this repository)
+Active collections: caveman,cursor,custom,documents,lark,matt
 
 Duplicate skills:
-- graphify
-  - /home/me/.codex/skills/graphify
-  - /home/me/.cursor/skills/graphify
+- impeccable
+  - /home/me/.codex/skills/impeccable
+  - /home/me/.cursor/skills/impeccable
 
-Context size warning risk: low (12 installed skill directories)
-Cleanup recommendations:
-- Use a focused profile or AGENT_SKILLS_COLLECTIONS for daily work.
-- Keep one owner for each duplicate and uninstall managed copies you do not need.
-- Run ./install.sh clean to remove only repository-managed skills.
+Context size warning risk: high (86 installed skill directories)
+Recommendations:
+- Keep one owner for each duplicate before reinstalling.
+- Run ./install.sh to install or update every skill.
 ```
 
-The context risk is a simple inventory heuristic: fewer than 25 skill directories is low, 25–49 is medium, and 50 or more is high. Codex's actual budget can vary.
+The warning is about the amount of routing information Codex loads at startup. It does not delete skills. With this repository's deliberately full installation, doctor may report a medium or high risk; that is useful information, not a failure.
 
-## Managed cleanup and uninstall
-
-Each target has two management files:
-
-- `.installed-skills.json` records skill name, source collection, repository source, install location, and UTC timestamp.
-- `.agent-skills-managed` is the dependency-free installer index used by both shell implementations.
-
-`clean` removes only entries owned by this repository. Manually created and externally installed directories are never included and are never deleted:
-
-```bash
-./install.sh clean
-```
-
-```powershell
-.\install.ps1 clean
-```
-
-Remove one managed skill or collection:
-
-```bash
-./install.sh uninstall caveman-review
-./install.sh uninstall --collection cursor
-```
-
-```powershell
-.\install.ps1 uninstall caveman-review
-.\install.ps1 uninstall -Collection cursor
-```
-
-The installer backs up a managed directory before replacing it during an update under `~/.agent-skills-backups/<timestamp>/`. Cleanup and uninstall do not touch unmanaged skills.
-
-For installations made by an older version of this repository, rerun the new installer once to migrate `.agent-skills-managed` into the richer manifest format, inspect with `doctor`, and then use `clean` if desired.
+Plugin-provided skills may not appear as folders, so doctor also reminds you to review enabled plugins separately.
 
 ## Maintaining the catalog
 
-Every skill remains a self-contained directory with a non-empty `SKILL.md`:
+Every skill remains self-contained:
 
 ```text
 collections/<collection>/<skill-name>/
@@ -244,7 +90,7 @@ collections/<collection>/<skill-name>/
 └── assets/
 ```
 
-To sync one agent's locally installed skills into the `custom` collection:
+To import locally installed skills into a collection while maintaining this repository:
 
 ```bash
 ./scripts/sync-from-local.sh claude custom
@@ -256,8 +102,6 @@ To sync one agent's locally installed skills into the `custom` collection:
 bash .\scripts\validate.sh
 ```
 
-Choose another collection name explicitly when importing a distinct source. Sync replaces only that collection, leaving all other collections intact. Validation checks shell syntax, skill metadata, duplicate names across collections, symlinks, and profile references.
+The installer tracks its own copies in `.installed-skills.json` and `.agent-skills-managed` inside each skills directory. Those files let it update managed skills without touching manually created or externally installed skills.
 
-## Safety and ownership
-
-Do not commit API keys, tokens, credentials, private memories, or machine-specific configuration. This is a public repository. Included skills retain their original authorship and license terms; check each skill directory before redistributing third-party material.
+Do not commit API keys, tokens, credentials, private memories, or machine-specific configuration. Third-party skills retain their original authorship and license terms.

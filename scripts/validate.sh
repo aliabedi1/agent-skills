@@ -34,21 +34,6 @@ if find "$REPO_ROOT/collections" -type l -print -quit | grep -q .; then
   FAILED=1
 fi
 
-while IFS='=' read -r profile selectors; do
-  [[ -z "$profile" || "$profile" == \#* ]] && continue
-  if ! [[ "$profile" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    printf 'Invalid profile name: %s\n' "$profile" >&2
-    FAILED=1
-  fi
-  IFS=',' read -r -a profile_collections <<< "$selectors"
-  for collection in "${profile_collections[@]}"; do
-    if [[ "$collection" != "all" && ! -d "$REPO_ROOT/collections/$collection" ]]; then
-      printf 'Profile %s references missing collection: %s\n' "$profile" "$collection" >&2
-      FAILED=1
-    fi
-  done
-done < "$REPO_ROOT/profiles.conf"
-
 if [[ "$FAILED" -ne 0 ]]; then
   exit 1
 fi

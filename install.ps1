@@ -6,22 +6,16 @@ $Ref = if ($env:AGENT_SKILLS_REF) { $env:AGENT_SKILLS_REF } else { "main" }
 $Targets = if ($env:AGENT_SKILLS_TARGETS) { $env:AGENT_SKILLS_TARGETS.ToLowerInvariant() } else { "both" }
 $ArchiveUrl = if ($env:AGENT_SKILLS_ARCHIVE_URL) { $env:AGENT_SKILLS_ARCHIVE_URL } else { "https://codeload.github.com/$Repository/zip/refs/heads/$Ref" }
 $Command = "install"
-$Profile = ""
-$UninstallSkill = ""
-$UninstallCollection = ""
 
 function Show-Usage {
     @"
 Usage:
-  .\install.ps1 [-Profile minimal|backend|frontend|matt|cursor|all]
+  .\install.ps1
   .\install.ps1 doctor
-  .\install.ps1 clean
-  .\install.ps1 uninstall <skill-name>
-  .\install.ps1 uninstall -Collection <collection-name>
 
-Set AGENT_SKILLS_COLLECTIONS to a comma-separated list of collections or skill
-names. With no profile or selection, all collections are installed for backward
-compatibility.
+Run without arguments to install every skill. Caveman and Unslop are then
+configured as always-on Codex skills; every other skill remains available when
+its description matches the task.
 "@ | Write-Host
 }
 
@@ -30,36 +24,12 @@ if ($Targets -notin @("both", "codex", "claude")) {
 }
 
 $Arguments = @($args)
-if ($Arguments.Count -gt 0 -and $Arguments[0] -in @("doctor", "clean")) {
-    $Command = $Arguments[0]
-    $Arguments = @($Arguments | Select-Object -Skip 1)
-}
-elseif ($Arguments.Count -gt 0 -and $Arguments[0] -eq "uninstall") {
-    $Command = "uninstall"
-    $Arguments = @($Arguments | Select-Object -Skip 1)
-    if ($Arguments.Count -eq 2 -and $Arguments[0] -in @("-Collection", "--collection")) {
-        $UninstallCollection = $Arguments[1]
-    }
-    elseif ($Arguments.Count -eq 1) {
-        $UninstallSkill = $Arguments[0]
-    }
-    else {
-        throw "Usage: .\install.ps1 uninstall <skill-name> or uninstall -Collection <collection-name>"
-    }
-    $Arguments = @()
-}
-
-for ($Index = 0; $Index -lt $Arguments.Count; $Index++) {
-    switch ($Arguments[$Index]) {
-        { $_ -in @("-Profile", "--profile") } {
-            if ($Index + 1 -ge $Arguments.Count) { throw "-Profile requires a profile name" }
-            $Profile = $Arguments[++$Index]
-        }
-        { $_ -in @("-Help", "--help", "-h") } {
-            Show-Usage
-            exit 0
-        }
-        default { throw "Unknown argument: $($Arguments[$Index])" }
+if ($Arguments.Count -gt 1) { throw "Usage: .\install.ps1 or .\install.ps1 doctor" }
+if ($Arguments.Count -eq 1) {
+    switch ($Arguments[0]) {
+        "doctor" { $Command = "doctor" }
+        { $_ -in @("-Help", "--help", "-h") } { Show-Usage; exit 0 }
+        default { throw "Only supported command is: .\install.ps1 doctor" }
     }
 }
 
@@ -167,15 +137,6 @@ function Set-ManagedSkill {
     Write-ManagedEntries -Root $Root -Entries $Entries
 }
 
-function Remove-ManagedEntry {
-    param(
-        [Parameter(Mandatory = $true)][string]$Root,
-        [Parameter(Mandatory = $true)][string]$Skill
-    )
-    $Entries = @(Get-ManagedEntries -Root $Root | Where-Object skill -ne $Skill)
-    Write-ManagedEntries -Root $Root -Entries $Entries
-}
-
 function Assert-ManagedDestination {
     param(
         [Parameter(Mandatory = $true)][string]$Root,
@@ -188,20 +149,33 @@ function Assert-ManagedDestination {
     }
 }
 
-function Remove-ManagedSkill {
-    param(
-        [Parameter(Mandatory = $true)][string]$Agent,
-        [Parameter(Mandatory = $true)][string]$Root,
-        [Parameter(Mandatory = $true)][string]$Skill
-    )
-    if (-not (Test-ManagedSkill -Root $Root -Skill $Skill)) { return }
-    $Destination = Join-Path $Root $Skill
-    Assert-ManagedDestination -Root $Root -Destination $Destination
-    if (Test-Path -LiteralPath $Destination) {
-        Remove-Item -LiteralPath $Destination -Recurse -Force
-        Write-Host "[$Agent] removed managed skill $Skill"
+function Set-CodexAlwaysOn {
+    param([Parameter(Mandatory = $true)][string]$CodexRoot)
+
+    $InstructionsPath = Join-Path $CodexRoot "AGENTS.md"
+    $MarkerStart = "# >>> agent-skills always-on >>>"
+    $MarkerEnd = "# <<< agent-skills always-on <<<"
+    New-Item -ItemType Directory -Path $CodexRoot -Force | Out-Null
+    $Retained = @()
+    if (Test-Path -LiteralPath $InstructionsPath -PathType Leaf) {
+        $Skipping = $false
+        foreach ($Line in @(Get-Content -LiteralPath $InstructionsPath)) {
+            if ($Line -eq $MarkerStart) { $Skipping = $true; continue }
+            if ($Line -eq $MarkerEnd) { $Skipping = $false; continue }
+            if (-not $Skipping) { $Retained += $Line }
+        }
     }
-    Remove-ManagedEntry -Root $Root -Skill $Skill
+    $Block = @(
+        "",
+        $MarkerStart,
+        "## Always-on skills",
+        "",
+        'At the start of every task, invoke and follow `$caveman` and `$unslop`.',
+        "Keep higher-priority instructions and explicit user requests authoritative.",
+        $MarkerEnd
+    )
+    [IO.File]::WriteAllLines($InstructionsPath, @($Retained) + $Block, [Text.UTF8Encoding]::new($false))
+    Write-Host "[codex] configured always-on caveman and unslop"
 }
 
 function Get-ExistingSources {
@@ -223,28 +197,6 @@ function Write-DuplicateWarning {
         [Parameter(Mandatory = $true)][string[]]$Owners
     )
     Write-Warning (@("Duplicate skill detected:", $Skill, "", "Sources:", "- $Source") + @($Owners | ForEach-Object { "- $_" }) + @("Owner: $($Owners[0]) (existing installation is kept)", "") -join "`n")
-}
-
-function Invoke-Clean {
-    foreach ($Target in $TargetRoots.GetEnumerator()) {
-        foreach ($Entry in @(Get-ManagedEntries -Root $Target.Value)) {
-            Remove-ManagedSkill -Agent $Target.Key -Root $Target.Value -Skill $Entry.skill
-        }
-    }
-    Write-Host "Clean complete. Only skills listed in this repository's managed manifests were removed."
-}
-
-function Invoke-Uninstall {
-    if ($UninstallSkill -and -not (Test-ValidName -Name $UninstallSkill)) { throw "Invalid skill name: $UninstallSkill" }
-    if ($UninstallCollection -and -not (Test-ValidName -Name $UninstallCollection)) { throw "Invalid collection name: $UninstallCollection" }
-    foreach ($Target in $TargetRoots.GetEnumerator()) {
-        foreach ($Entry in @(Get-ManagedEntries -Root $Target.Value)) {
-            if (($UninstallSkill -and $Entry.skill -eq $UninstallSkill) -or
-                ($UninstallCollection -and $Entry.source_collection -eq $UninstallCollection)) {
-                Remove-ManagedSkill -Agent $Target.Key -Root $Target.Value -Skill $Entry.skill
-            }
-        }
-    }
 }
 
 function Invoke-Doctor {
@@ -276,17 +228,14 @@ function Invoke-Doctor {
     }
     else { Write-Host "- none" }
     Write-Host "`nContext size warning risk: $Risk ($($Inventory.Count) installed skill directories)"
-    Write-Host "Cleanup recommendations:"
-    Write-Host "- Use a focused profile or AGENT_SKILLS_COLLECTIONS for daily work."
-    if ($Duplicates) { Write-Host "- Keep one owner for each duplicate and uninstall managed copies you do not need." }
-    Write-Host "- Run .\install.ps1 clean to remove only repository-managed skills."
+    Write-Host "Recommendations:"
+    if ($Duplicates) { Write-Host "- Keep one owner for each duplicate before reinstalling." }
+    Write-Host "- Run .\install.ps1 to install or update every skill."
     Write-Host "- Plugin-provided skills cannot be inspected from filesystem roots; review enabled plugins separately."
 }
 
 switch ($Command) {
     "doctor" { Invoke-Doctor; exit 0 }
-    "clean" { Invoke-Clean; exit 0 }
-    "uninstall" { Invoke-Uninstall; exit 0 }
 }
 
 $TempDirectory = Join-Path ([IO.Path]::GetTempPath()) ("agent-skills-" + [guid]::NewGuid().ToString("N"))
@@ -311,22 +260,7 @@ try {
         Select-Object -First 1
     if (-not $RepositoryRoot) { throw "The downloaded repository does not contain a top-level collections directory." }
     $CollectionsRoot = Join-Path $RepositoryRoot.FullName "collections"
-    $ProfilesPath = Join-Path $RepositoryRoot.FullName "profiles.conf"
-
-    $Selectors = if ($env:AGENT_SKILLS_COLLECTIONS) { $env:AGENT_SKILLS_COLLECTIONS } else { "" }
-    if ($Profile) {
-        if ($Selectors) { throw "Use either -Profile or AGENT_SKILLS_COLLECTIONS, not both." }
-        if (-not (Test-Path -LiteralPath $ProfilesPath -PathType Leaf)) { throw "Profile configuration not found." }
-        $ProfileLine = Get-Content -LiteralPath $ProfilesPath | Where-Object { $_ -match "^$([regex]::Escape($Profile))=" } | Select-Object -First 1
-        if (-not $ProfileLine) { throw "Unknown profile: $Profile" }
-        $Selectors = ($ProfileLine -split "=", 2)[1]
-        Write-Host "Using profile $Profile ($Selectors)."
-    }
-    elseif (-not $Selectors) {
-        $Selectors = "all"
-        Write-Host "No profile selected; installing all collections for backward compatibility."
-        Write-Host "For a smaller startup context, use -Profile minimal or AGENT_SKILLS_COLLECTIONS."
-    }
+    Write-Host "Installing every available skill."
 
     $AllSkills = foreach ($CollectionDirectory in @(Get-ChildItem -LiteralPath $CollectionsRoot -Directory)) {
         foreach ($SkillDirectory in @(Get-ChildItem -LiteralPath $CollectionDirectory.FullName -Directory)) {
@@ -335,21 +269,7 @@ try {
             }
         }
     }
-    $Selected = @()
-    foreach ($SelectorValue in @($Selectors -split ',' | ForEach-Object Trim | Where-Object { $_ })) {
-        if ($SelectorValue -eq "all") {
-            $Selected += $AllSkills
-        }
-        else {
-            $Matches = @($AllSkills | Where-Object { $_.collection -eq $SelectorValue -or $_.skill -eq $SelectorValue })
-            if (-not $Matches) { throw "Unknown collection or skill: $SelectorValue" }
-            if (-not ($AllSkills.collection -contains $SelectorValue) -and $Matches.Count -gt 1) {
-                throw "Skill name is duplicated across repository collections: $SelectorValue"
-            }
-            $Selected += $Matches
-        }
-    }
-    $Selected = @($Selected | Sort-Object skill -Unique)
+    $Selected = @($AllSkills | Sort-Object skill -Unique)
     if (-not $Selected) { throw "The selection did not contain any skills." }
 
     foreach ($Target in $TargetRoots.GetEnumerator()) {
@@ -382,6 +302,10 @@ try {
             Write-Host "[$($Target.Key)] installed $($Skill.skill) ($($Skill.collection))"
             $Changed = $true
         }
+    }
+
+    if ($Targets -in @("both", "codex")) {
+        Set-CodexAlwaysOn -CodexRoot $CodexHome
     }
 
     if ($Changed) {
