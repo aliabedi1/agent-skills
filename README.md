@@ -6,7 +6,7 @@ The installer also makes **Caveman** and **Unslop** always-on for Codex. They ar
 
 ## Commands
 
-Clone this repository once:
+Clone this repository once if you want to keep it locally:
 
 ```bash
 git clone https://github.com/aliabedi1/agent-skills.git
@@ -24,6 +24,13 @@ Then there are only two commands.
 | --- | --- | --- |
 | Install or update every skill | `./install.sh` | `.\install.ps1` |
 | Check your installation | `./install.sh doctor` | `.\install.ps1 doctor` |
+
+Or run either command directly from GitHub without cloning.
+
+| What you want | Linux / macOS | Windows PowerShell |
+| --- | --- | --- |
+| Install or update every skill | `curl -fsSL https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.sh \| bash` | `irm https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.ps1 \| iex` |
+| Check your installation | `curl -fsSL https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.sh \| bash -s -- doctor` | `& ([scriptblock]::Create((irm https://raw.githubusercontent.com/aliabedi1/agent-skills/main/install.ps1))) doctor` |
 
 The installer is safe to rerun. It updates only skills it previously installed, makes a backup before replacing one, and never overwrites a manually installed skill.
 
