@@ -43,12 +43,15 @@ collections/
 ├── custom/     # Custom skills, including Unslop
 ├── caveman/    # Caveman communication skills
 ├── documents/  # Document and PDF skills
-└── lark/       # Lark / Feishu skills and workflows
+├── lark/       # Lark / Feishu skills and workflows
+└── ui-skills/  # UI Skills router and its complete bundled skill set
 ```
 
 All collections are installed to Codex and Claude Code by default. The installer checks `~/.codex/skills`, `~/.claude/skills`, and `~/.cursor/skills` first. If a skill already exists, it keeps that existing owner and shows a duplicate warning instead of creating another copy.
 
 Impeccable is included from [pbakaus/impeccable](https://github.com/pbakaus/impeccable) under its Apache-2.0 license. Unslop is included from [nattergabriel/unslop](https://github.com/nattergabriel/unslop) under its MIT license.
+
+UI Skills is included from [ibelick/ui-skills](https://github.com/ibelick/ui-skills) under its MIT license. The collection includes the routing skill and all locally hosted companion skills, with their agents, references, and license files.
 
 ## Caveman and Unslop are always on
 
@@ -67,8 +70,8 @@ Use doctor whenever Codex warns that skill descriptions were shortened, or when 
 ```text
 Agent Skills doctor
 
-Installed skills: 86 discovered (82 managed by this repository)
-Active collections: caveman,cursor,custom,documents,lark,matt
+Installed skills: 86 discovered (85 managed by this repository)
+Active collections: caveman,cursor,custom,documents,lark,matt,ui-skills
 
 Duplicate skills:
 - impeccable
